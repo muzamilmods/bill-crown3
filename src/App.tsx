@@ -113,10 +113,11 @@ const SplashScreen = ({ onStart }: any) => {
         <div className="relative mb-12 group">
           <motion.div
             animate={{ 
-              y: [0, -15, 0],
-              rotateY: [0, 180, 360]
+              scale: [1, 1.05, 1],
+              rotate: [0, 5, -5, 0],
+              filter: ["drop-shadow(0 0 10px var(--theme-color))", "drop-shadow(0 0 30px var(--theme-color))", "drop-shadow(0 0 10px var(--theme-color))"]
             }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
             className="relative z-20"
           >
             <Crown size={140} className="text-[var(--theme-color)] neon-glow rounded-full p-6 bg-black/40 backdrop-blur-3xl border-4 border-[var(--theme-color)]/30 shadow-[0_0_50px_var(--theme-color)]/20" />
@@ -343,13 +344,13 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
             <select 
               value={currentProduct.unit} 
               onChange={(e) => setCurrentProduct({...currentProduct, unit: e.target.value})}
-              className="glass px-4 py-3 rounded-xl focus:outline-none border-none"
+              className="glass px-4 py-3 rounded-xl focus:outline-none border-none text-white bg-[#1a1a1a]"
             >
-              <option value="piece">Piece</option>
-              <option value="kg">KG</option>
-              <option value="liter">Liter</option>
-              <option value="meter">Meter</option>
-              <option value="dozen">Dozen</option>
+              <option value="piece" className="bg-[#1a1a1a] text-white">Piece</option>
+              <option value="kg" className="bg-[#1a1a1a] text-white">KG</option>
+              <option value="liter" className="bg-[#1a1a1a] text-white">Liter</option>
+              <option value="meter" className="bg-[#1a1a1a] text-white">Meter</option>
+              <option value="dozen" className="bg-[#1a1a1a] text-white">Dozen</option>
             </select>
           </div>
         </div>
@@ -631,7 +632,10 @@ const Onboarding = ({ onComplete }: any) => {
 
         <div className="grid grid-cols-2 gap-4">
           <button 
-            onClick={() => handleSelect('light')}
+            onClick={() => {
+              playSound('success');
+              handleSelect('light');
+            }}
             className="group flex flex-col items-center gap-4 p-6 rounded-3xl bg-white text-black border-4 border-transparent hover:border-[var(--theme-color)] transition-all"
           >
             <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -640,7 +644,10 @@ const Onboarding = ({ onComplete }: any) => {
             <span className="font-black uppercase tracking-widest text-xs">Light Mode</span>
           </button>
           <button 
-            onClick={() => handleSelect('dark')}
+            onClick={() => {
+              playSound('success');
+              handleSelect('dark');
+            }}
             className="group flex flex-col items-center gap-4 p-6 rounded-3xl bg-black text-white border-4 border-white/10 hover:border-[var(--theme-color)] transition-all"
           >
             <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -756,7 +763,7 @@ const UpgradePage = ({ onBack }: any) => {
 };
 
 const SettingsPage = ({ onBack }: any) => {
-  const { t, settings, updateSettings } = useApp();
+  const { t, settings, updateSettings, playSound } = useApp();
   const [customWatermark, setCustomWatermark] = useState(settings.customWatermark || { name: '', address: '', phone: '' });
 
   const colors = ['#00f2ff', '#ff00ff', '#00ff00', '#ffff00', '#ff4d00', '#ffffff'];
@@ -796,7 +803,10 @@ const SettingsPage = ({ onBack }: any) => {
               {colors.map(c => (
                 <button 
                   key={c} 
-                  onClick={() => updateSettings({ themeColor: c })}
+                  onClick={() => {
+                    playSound('pop');
+                    updateSettings({ themeColor: c });
+                  }}
                   className={`w-10 h-10 rounded-full border-2 ${settings.themeColor === c ? 'border-white' : 'border-transparent'} shadow-lg`}
                   style={{ backgroundColor: c }}
                 />
@@ -808,8 +818,24 @@ const SettingsPage = ({ onBack }: any) => {
         <Card>
           <h3 className="font-bold mb-4">{t('language')}</h3>
           <div className="grid grid-cols-2 gap-4">
-            <Button variant={settings.language === 'en' ? 'primary' : 'secondary'} onClick={() => updateSettings({ language: 'en' })}>English</Button>
-            <Button variant={settings.language === 'ur' ? 'primary' : 'secondary'} onClick={() => updateSettings({ language: 'ur' })}>اردو</Button>
+            <Button 
+              variant={settings.language === 'en' ? 'primary' : 'secondary'} 
+              onClick={() => {
+                playSound('success');
+                updateSettings({ language: 'en' });
+              }}
+            >
+              English
+            </Button>
+            <Button 
+              variant={settings.language === 'ur' ? 'primary' : 'secondary'} 
+              onClick={() => {
+                playSound('success');
+                updateSettings({ language: 'ur' });
+              }}
+            >
+              اردو
+            </Button>
           </div>
         </Card>
 
@@ -1139,11 +1165,14 @@ export default function App() {
           <Card className="bg-gradient-to-r from-[var(--theme-color)]/20 to-transparent border-[var(--theme-color)]/30 py-4 flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-black/40"><CreditCard size={18} className="text-[var(--theme-color)]" /></div>
-              <p className="text-sm font-bold opacity-60">{t('credits')}</p>
+              <p className="text-sm font-bold opacity-60 uppercase tracking-widest">{t('credits')}</p>
             </div>
-            <p className="text-xl font-black neon-text">
-              {settings.plan === 'premium' ? t('unlimited') : settings.credits}
-            </p>
+            <div className="text-right">
+              <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] leading-none mb-1">Remaining</p>
+              <p className="text-xl font-black neon-text">
+                {settings.plan === 'premium' ? t('unlimited') : settings.credits}
+              </p>
+            </div>
           </Card>
         </motion.div>
 
