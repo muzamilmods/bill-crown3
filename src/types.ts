@@ -1,4 +1,4 @@
-export type Plan = 'free' | 'pro' | 'premium';
+export type Plan = 'free' | 'pro' | 'premium' | 'ultra';
 
 export interface Product {
   id: string;

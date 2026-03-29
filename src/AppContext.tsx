@@ -167,7 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const useCredits = (amount: number): boolean => {
-    if (settings.plan === 'premium') return true;
+    if (settings.plan === 'ultra') return true;
     if (settings.credits >= amount) {
       updateSettings({ credits: settings.credits - amount });
       return true;

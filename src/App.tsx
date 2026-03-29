@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Trash2, Download, History, Gamepad2, Settings, 
   Crown, ArrowLeft, Mail, Heart, Globe, CheckCircle2,
-  Smartphone, CreditCard, QrCode, X
+  Smartphone, CreditCard, QrCode, X, TrendingUp
 } from 'lucide-react';
 import { useApp } from './AppContext';
 import { storage } from './lib/storage';
@@ -19,7 +19,7 @@ const Button = ({ children, onClick, className, variant = 'primary', disabled = 
   const base = "px-6 py-3 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none relative overflow-hidden group";
   const variants: any = {
     primary: `bg-[var(--theme-color)] text-black shadow-[0_0_20px_var(--theme-color)] hover:shadow-[0_0_35px_var(--theme-color)]`,
-    secondary: "glass text-white hover:bg-white/10",
+    secondary: "glass text-main hover:bg-white/10",
     outline: "border-2 border-[var(--theme-color)] text-[var(--theme-color)] hover:bg-[var(--theme-color)]/10",
     danger: "bg-red-500/20 text-red-500 border border-red-500/50 hover:bg-red-500/30"
   };
@@ -67,7 +67,7 @@ const SplashScreen = ({ onStart }: any) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center overflow-hidden">
+    <div className="fixed inset-0 z-[100] bg-main flex flex-col items-center justify-center overflow-hidden">
       {/* Dynamic Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(30)].map((_, i) => (
@@ -132,7 +132,7 @@ const SplashScreen = ({ onStart }: any) => {
           transition={{ delay: 0.6 }}
           className="space-y-3"
         >
-          <h1 className="text-7xl font-black tracking-tighter italic uppercase leading-none select-none">
+          <h1 className="text-7xl font-black tracking-tighter italic uppercase leading-none select-none text-main">
             BILL <span className="text-[var(--theme-color)] neon-text">CROWN</span>
           </h1>
           <div className="flex items-center justify-center gap-4">
@@ -277,7 +277,7 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
 
     // Only deduct credits for NEW bills
     if (!editingBill) {
-      const creditCost = settings.plan === 'free' ? 5 : 0;
+      const creditCost = 5;
       if (!useCredits(creditCost)) {
         alert(t('insufficientCredits'));
         return;
@@ -296,7 +296,7 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
       paidAmount,
       remainingAmount,
       date: editingBill?.date || new Date().toLocaleDateString(),
-      customWatermark: settings.plan === 'premium' ? settings.customWatermark : undefined
+      customWatermark: (settings.plan === 'premium' || settings.plan === 'ultra') ? settings.customWatermark : undefined
     };
 
     setTimeout(() => {
@@ -309,9 +309,9 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
   };
 
   return (
-    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-40 bg-[#050505] overflow-y-auto p-6 pb-24">
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-40 bg-main overflow-y-auto p-6 pb-24">
       {isGenerating && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-6">
+        <div className="fixed inset-0 z-[100] bg-main/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-6">
           <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -402,13 +402,29 @@ const BillView = ({ bill, onBack }: any) => {
   const download = async (format: 'pdf' | 'jpg' | 'png') => {
     playSound('success');
     if (!billRef.current) return;
+    
+    // Create a temporary container to render the bill for capture
+    // This avoids issues with fixed positioning and scroll offsets
+    const originalElement = billRef.current;
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.width = originalElement.offsetWidth + 'px';
+    document.body.appendChild(container);
+    
+    const clone = originalElement.cloneNode(true) as HTMLElement;
+    container.appendChild(clone);
+
     try {
-      const canvas = await html2canvas(billRef.current, { 
-        scale: 3, 
-        backgroundColor: '#ffffff',
+      const canvas = await html2canvas(clone, { 
+        scale: settings.plan === 'ultra' ? 4 : 2, 
+        backgroundColor: settings.themeMode === 'dark' ? '#050505' : '#ffffff',
         useCORS: true,
-        logging: true
+        logging: false
       });
+      
+      document.body.removeChild(container);
       
       if (format === 'pdf') {
         const imgData = canvas.toDataURL('image/png');
@@ -420,16 +436,22 @@ const BillView = ({ bill, onBack }: any) => {
         pdf.save(`bill-${bill.id}.pdf`);
       } else {
         const imgData = canvas.toDataURL(`image/${format === 'jpg' ? 'jpeg' : 'png'}`, 1.0);
+        const blob = await (await fetch(imgData)).blob();
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.style.display = 'none';
-        link.href = imgData;
+        link.href = url;
         link.download = `bill-${bill.id}.${format}`;
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => document.body.removeChild(link), 100);
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }, 100);
       }
     } catch (error) {
       console.error('Download failed:', error);
+      if (container.parentNode) document.body.removeChild(container);
       alert('Download failed. Please try again or take a screenshot.');
     }
   };
@@ -461,7 +483,7 @@ const BillView = ({ bill, onBack }: any) => {
       initial={{ opacity: 0, scale: 0.9 }} 
       animate={{ opacity: 1, scale: 1 }} 
       exit={{ opacity: 0, scale: 0.9 }}
-      className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-2xl overflow-y-auto p-4 flex flex-col items-center"
+      className="fixed inset-0 z-[60] bg-main/95 backdrop-blur-2xl overflow-y-auto p-4 flex flex-col items-center"
     >
       <div className="w-full max-w-lg flex items-center justify-between mb-6">
         <button onClick={onBack} className="glass p-3 rounded-2xl hover:scale-110 transition-transform"><ArrowLeft /></button>
@@ -572,7 +594,7 @@ const HistoryPage = ({ onBack, onView, onEdit }: any) => {
   };
 
   return (
-    <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} className="fixed inset-0 z-40 bg-[#050505] overflow-y-auto p-6 pb-24">
+    <motion.div initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} className="fixed inset-0 z-40 bg-main overflow-y-auto p-6 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="glass p-2 rounded-full"><ArrowLeft /></button>
         <h2 className="text-2xl font-bold">{t('history')}</h2>
@@ -617,7 +639,7 @@ const Onboarding = ({ onComplete }: any) => {
     <motion.div 
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
-      className="fixed inset-0 z-[100] bg-[#050505] flex flex-col items-center justify-center p-6 text-center"
+      className="fixed inset-0 z-[100] bg-main flex flex-col items-center justify-center p-6 text-center"
     >
       <motion.div
         initial={{ y: 20, opacity: 0 }}
@@ -676,7 +698,12 @@ const UpgradePage = ({ onBack }: any) => {
       confetti();
       onBack();
     } else if (key === 'limazum92') {
-      updateSettings({ plan: 'premium', activationKey: key, credits: 999999 });
+      updateSettings({ plan: 'premium', activationKey: key, credits: 5000 });
+      playSound('success');
+      confetti();
+      onBack();
+    } else if (key === 'limazum29') {
+      updateSettings({ plan: 'ultra', activationKey: key, credits: 999999 });
       playSound('success');
       confetti();
       onBack();
@@ -687,7 +714,7 @@ const UpgradePage = ({ onBack }: any) => {
   };
 
   return (
-    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 z-50 bg-[#050505] overflow-y-auto p-6 pb-24">
+    <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} className="fixed inset-0 z-50 bg-main overflow-y-auto p-6 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="glass p-2 rounded-full"><X /></button>
         <h2 className="text-2xl font-bold uppercase tracking-tighter italic">{t('upgrade')} <span className="text-[var(--theme-color)]">PRO</span></h2>
@@ -699,7 +726,7 @@ const UpgradePage = ({ onBack }: any) => {
           className="relative"
         >
           <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-3xl blur opacity-25" />
-          <Card className="border-2 border-cyan-500/30 relative overflow-hidden bg-black/60 backdrop-blur-2xl">
+          <Card className="border-2 border-cyan-500/30 relative overflow-hidden bg-main/60 backdrop-blur-2xl">
             <div className="absolute top-0 right-0 bg-cyan-500 text-black px-6 py-1 font-black text-xs rounded-bl-xl tracking-widest">PRO</div>
             <div className="flex justify-between items-end mb-6">
               <div>
@@ -720,26 +747,49 @@ const UpgradePage = ({ onBack }: any) => {
           whileHover={{ scale: 1.02 }}
           className="relative"
         >
-          <div className="absolute -inset-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-3xl blur opacity-40 animate-pulse" />
-          <Card className="border-2 border-yellow-500/30 relative overflow-hidden bg-black/60 backdrop-blur-2xl">
+          <div className="absolute -inset-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-3xl blur opacity-30" />
+          <Card className="border-2 border-yellow-500/30 relative overflow-hidden bg-main/60 backdrop-blur-2xl">
             <div className="absolute top-0 right-0 bg-yellow-500 text-black px-6 py-1 font-black text-xs rounded-bl-xl tracking-widest">PREMIUM</div>
             <div className="flex justify-between items-end mb-6">
               <div>
-                <h3 className="text-4xl font-black tracking-tighter">1799 <span className="text-sm opacity-60">PKR</span></h3>
+                <h3 className="text-4xl font-black tracking-tighter">2500 <span className="text-sm opacity-60">PKR</span></h3>
                 <p className="text-xs font-bold text-yellow-500 uppercase tracking-widest mt-1">Ultimate Empire</p>
               </div>
-              <Crown size={40} className="text-yellow-500 opacity-40 animate-bounce" />
+              <Crown size={40} className="text-yellow-500 opacity-40" />
             </div>
             <ul className="space-y-3">
-              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> Unlimited Credits</li>
-              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> Custom Watermark</li>
-              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> All Game Modes</li>
-              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> Premium Calculator</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> 5000 Bill Credits</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> 2 Game Modes Unlocked</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-yellow-500" /> Calculator Unlocked</li>
             </ul>
           </Card>
         </motion.div>
 
-        <Card className="space-y-6 bg-black/40 border-white/5">
+        <motion.div 
+          whileHover={{ scale: 1.02 }}
+          className="relative"
+        >
+          <div className="absolute -inset-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-3xl blur opacity-40 animate-pulse" />
+          <Card className="border-2 border-purple-500/30 relative overflow-hidden bg-main/60 backdrop-blur-2xl">
+            <div className="absolute top-0 right-0 bg-purple-500 text-black px-6 py-1 font-black text-xs rounded-bl-xl tracking-widest">ULTRA</div>
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h3 className="text-4xl font-black tracking-tighter">5000 <span className="text-sm opacity-60">PKR</span></h3>
+                <p className="text-xs font-bold text-purple-500 uppercase tracking-widest mt-1">Supreme Kingdom</p>
+              </div>
+              <Crown size={40} className="text-purple-500 opacity-40 animate-bounce" />
+            </div>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-purple-500" /> Unlimited Credits</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-purple-500" /> 4K Bill Download</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-purple-500" /> Monthly Saving Feature</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-purple-500" /> All Games & Calculator</li>
+              <li className="flex items-center gap-3 text-sm font-medium"><CheckCircle2 size={18} className="text-purple-500" /> Custom Watermark</li>
+            </ul>
+          </Card>
+        </motion.div>
+
+        <Card className="space-y-6 bg-main/40 border-white/5">
           <div className="flex items-center gap-4">
             <div className="bg-green-500/20 p-4 rounded-2xl border border-green-500/30"><Smartphone className="text-green-500" /></div>
             <div>
@@ -773,7 +823,7 @@ const SettingsPage = ({ onBack }: any) => {
   };
 
   return (
-    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-40 bg-[#050505] overflow-y-auto p-6 pb-24">
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-40 bg-main overflow-y-auto p-6 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="glass p-2 rounded-full"><ArrowLeft /></button>
         <h2 className="text-2xl font-bold">{t('settings')}</h2>
@@ -906,7 +956,7 @@ const SettingsPage = ({ onBack }: any) => {
 const PreviousVersions = ({ onBack }: any) => {
   const { t } = useApp();
   return (
-    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-50 bg-[#050505] overflow-y-auto p-6 pb-24">
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-50 bg-main overflow-y-auto p-6 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="glass p-2 rounded-full"><ArrowLeft /></button>
         <h2 className="text-2xl font-bold uppercase tracking-tighter italic">Previous <span className="text-[var(--theme-color)]">Versions</span></h2>
@@ -956,6 +1006,114 @@ const PreviousVersions = ({ onBack }: any) => {
         <Card className="bg-[var(--theme-color)]/5 border-dashed border-[var(--theme-color)]/30">
           <p className="text-center text-sm opacity-60 italic">"Explore where it all started. Bill Crown 3 is the ultimate version with all features combined!"</p>
         </Card>
+      </div>
+    </motion.div>
+  );
+};
+
+const MonthlySavingPage = ({ onBack }: any) => {
+  const { t, playSound, settings } = useApp();
+  const [income, setIncome] = useState('');
+  const [household, setHousehold] = useState('');
+  const [medicine, setMedicine] = useState('');
+  const [labour, setLabour] = useState('');
+  const [mechanical, setMechanical] = useState('');
+  const [food, setFood] = useState('');
+  const [material, setMaterial] = useState('');
+  const [result, setResult] = useState<number | null>(null);
+
+  const calculate = () => {
+    const totalIncome = parseFloat(income) || 0;
+    const costs = [
+      parseFloat(household) || 0,
+      parseFloat(medicine) || 0,
+      parseFloat(labour) || 0,
+      parseFloat(mechanical) || 0,
+      parseFloat(food) || 0,
+      parseFloat(material) || 0
+    ];
+    const totalCost = costs.reduce((a, b) => a + b, 0);
+    setResult(totalIncome - totalCost);
+    playSound('success');
+  };
+
+  const downloadSaving = async () => {
+    const element = document.getElementById('saving-report');
+    if (!element) return;
+    
+    playSound('success');
+    const canvas = await html2canvas(element, {
+      scale: settings.plan === 'ultra' ? 4 : 2,
+      backgroundColor: settings.themeMode === 'dark' ? '#050505' : '#ffffff',
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    const blob = await (await fetch(imgData)).blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.style.display = 'none';
+    link.href = url;
+    link.download = `saving_report_${new Date().getTime()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+  };
+
+  return (
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-50 bg-main overflow-y-auto p-6 pb-24">
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="glass p-2 rounded-full"><ArrowLeft /></button>
+        <h2 className="text-2xl font-bold uppercase tracking-tighter italic">Monthly <span className="text-[var(--theme-color)]">Saving</span></h2>
+      </div>
+
+      <div className="space-y-4">
+        <Input label="Estimated Total Income" type="number" value={income} onChange={setIncome} placeholder="Enter income" />
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Household Cost" type="number" value={household} onChange={setHousehold} placeholder="0" />
+          <Input label="Medicine Cost" type="number" value={medicine} onChange={setMedicine} placeholder="0" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Labour Cost (Optional)" type="number" value={labour} onChange={setLabour} placeholder="0" />
+          <Input label="Mechanical Cost (Optional)" type="number" value={mechanical} onChange={setMechanical} placeholder="0" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="Food Cost" type="number" value={food} onChange={setFood} placeholder="0" />
+          <Input label="Material Cost (Optional)" type="number" value={material} onChange={setMaterial} placeholder="0" />
+        </div>
+
+        <Button onClick={calculate} className="w-full py-4 text-lg mt-4">Calculate Saving</Button>
+
+        {result !== null && (
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+            <div id="saving-report" className="p-8 glass rounded-3xl border-2 border-[var(--theme-color)]/30 text-center space-y-4 bg-main">
+              <Crown className="mx-auto text-[var(--theme-color)]" size={48} />
+              <h3 className="text-xl font-black uppercase tracking-widest">Saving Report</h3>
+              <div className="h-px bg-[var(--theme-color)]/20 w-full" />
+              <div className="space-y-2">
+                <div className="flex justify-between opacity-60 text-xs uppercase font-bold">
+                  <span>Total Income</span>
+                  <span>Rs. {income}</span>
+                </div>
+                <div className="flex justify-between text-red-500 text-xs uppercase font-bold">
+                  <span>Total Expenses</span>
+                  <span>Rs. {parseFloat(income) - result}</span>
+                </div>
+                <div className="h-px bg-[var(--theme-color)]/10 w-full" />
+                <div className="flex justify-between text-2xl font-black tracking-tighter">
+                  <span>NET SAVING</span>
+                  <span className="text-[var(--theme-color)]">Rs. {result}</span>
+                </div>
+              </div>
+              <p className="text-[10px] opacity-40 font-bold uppercase tracking-widest">Generated by Bill Crown 3 Ultra</p>
+            </div>
+            <Button onClick={downloadSaving} variant="outline" className="w-full mt-4 flex gap-2 items-center justify-center">
+              <Download size={20} /> Download Report
+            </Button>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
@@ -1037,7 +1195,7 @@ const GamePage = ({ onBack, onUpgrade }: any) => {
 
   if (!mode) {
     return (
-      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="fixed inset-0 z-50 bg-[#050505] p-6 overflow-y-auto">
+      <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="fixed inset-0 z-50 bg-main p-6 overflow-y-auto">
         <div className="flex items-center gap-4 mb-8">
           <button onClick={onBack} className="glass p-2 rounded-full"><ArrowLeft /></button>
           <h2 className="text-2xl font-bold">{t('game')}</h2>
@@ -1062,12 +1220,12 @@ const GamePage = ({ onBack, onUpgrade }: any) => {
               <div className="relative">
                 <Button 
                   className="w-full py-8 text-xl" 
-                  variant={settings.plan !== 'premium' ? 'secondary' : 'primary'}
-                  onClick={() => settings.plan === 'premium' ? initGrid('money') : onUpgrade()}
+                  variant={(settings.plan === 'premium' || settings.plan === 'ultra') ? 'primary' : 'secondary'}
+                  onClick={() => (settings.plan === 'premium' || settings.plan === 'ultra') ? initGrid('money') : onUpgrade()}
                 >
                   💵 {t('money')}
                 </Button>
-                {settings.plan !== 'premium' && <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center rounded-2xl backdrop-blur-sm"><Crown className="text-yellow-500 mb-1" /> <span className="text-xs font-bold">{t('unlockPremium')}</span></div>}
+                {(settings.plan !== 'premium' && settings.plan !== 'ultra') && <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center rounded-2xl backdrop-blur-sm"><Crown className="text-yellow-500 mb-1" /> <span className="text-xs font-bold">{t('unlockPremium')}</span></div>}
               </div>
             </div>
           </Card>
@@ -1081,7 +1239,7 @@ const GamePage = ({ onBack, onUpgrade }: any) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#050505] p-6 flex flex-col">
+    <div className="fixed inset-0 z-50 bg-main p-6 flex flex-col">
       <div className="flex justify-between items-center mb-8">
         <button onClick={() => setMode(null)} className="glass p-2 rounded-full"><ArrowLeft /></button>
         <div className="glass px-6 py-2 rounded-full font-black text-[var(--theme-color)]">{t('score')}: {score}</div>
@@ -1110,7 +1268,7 @@ export default function App() {
   const { t, settings, playSound } = useApp();
   const [showSplash, setShowSplash] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [page, setPage] = useState<'dashboard' | 'create' | 'history' | 'settings' | 'upgrade' | 'game' | 'calculator' | 'versions'>('dashboard');
+  const [page, setPage] = useState<'dashboard' | 'create' | 'history' | 'settings' | 'upgrade' | 'game' | 'calculator' | 'versions' | 'saving'>('dashboard');
   const [viewingBill, setViewingBill] = useState<Bill | null>(null);
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
 
@@ -1127,7 +1285,7 @@ export default function App() {
   if (page === 'versions') return <PreviousVersions onBack={() => setPage('dashboard')} />;
 
   return (
-    <div className="min-h-screen pb-24 bg-[#050505] text-white selection:bg-[var(--theme-color)]/30">
+    <div className="min-h-screen pb-24 bg-main text-main selection:bg-[var(--theme-color)]/30">
       {/* Top Bar */}
       <header className="p-6 flex justify-between items-center sticky top-0 z-30 glass rounded-b-3xl border-b border-[var(--theme-color)]/20 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
@@ -1148,8 +1306,8 @@ export default function App() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setPage('upgrade')} className="glass p-3 rounded-2xl relative border-[var(--theme-color)]/20 hover:scale-110 transition-transform">
-            <Crown size={20} className={settings.plan !== 'free' ? 'text-yellow-500' : 'text-white'} />
-            {settings.plan === 'free' && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-bounce flex items-center justify-center text-[8px] font-bold">!</span>}
+            <Crown size={20} className={settings.plan !== 'free' ? 'text-yellow-500' : 'text-main'} />
+            {settings.plan === 'free' && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-bounce flex items-center justify-center text-[8px] font-bold text-white">!</span>}
           </button>
           <button onClick={() => setPage('settings')} className="glass p-3 rounded-2xl border-[var(--theme-color)]/20 hover:scale-110 transition-transform"><Settings size={20} /></button>
         </div>
@@ -1164,13 +1322,13 @@ export default function App() {
         >
           <Card className="bg-gradient-to-r from-[var(--theme-color)]/20 to-transparent border-[var(--theme-color)]/30 py-4 flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-black/40"><CreditCard size={18} className="text-[var(--theme-color)]" /></div>
+              <div className="p-2 rounded-lg bg-main/40"><CreditCard size={18} className="text-[var(--theme-color)]" /></div>
               <p className="text-sm font-bold opacity-60 uppercase tracking-widest">{t('credits')}</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] leading-none mb-1">Remaining</p>
               <p className="text-xl font-black neon-text">
-                {settings.plan === 'premium' ? t('unlimited') : settings.credits}
+                {settings.plan === 'ultra' ? t('unlimited') : settings.credits}
               </p>
             </div>
           </Card>
@@ -1208,8 +1366,8 @@ export default function App() {
           {/* Premium Features Row */}
           <div className="grid grid-cols-1 gap-6">
             <Card 
-              onClick={() => settings.plan === 'premium' ? setPage('calculator') : setPage('upgrade')}
-              className={`flex items-center justify-between p-6 cursor-pointer hover:scale-[1.02] transition-all border-[var(--theme-color)]/20 relative overflow-hidden group ${settings.plan !== 'premium' ? 'opacity-80' : ''}`}
+              onClick={() => (settings.plan === 'premium' || settings.plan === 'ultra') ? setPage('calculator') : setPage('upgrade')}
+              className={`flex items-center justify-between p-6 cursor-pointer hover:scale-[1.02] transition-all border-[var(--theme-color)]/20 relative overflow-hidden group ${(settings.plan !== 'premium' && settings.plan !== 'ultra') ? 'opacity-80' : ''}`}
             >
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-2xl bg-black/40 border border-white/5 group-hover:border-[var(--theme-color)]/50 transition-colors"><Globe size={24} className="text-[var(--theme-color)]" /></div>
@@ -1218,7 +1376,21 @@ export default function App() {
                   <p className="text-[10px] opacity-40 font-bold uppercase">{t('premiumOnly')}</p>
                 </div>
               </div>
-              {settings.plan !== 'premium' ? <Crown size={20} className="text-yellow-500 animate-pulse" /> : <ArrowLeft className="rotate-180 text-[var(--theme-color)]" />}
+              {(settings.plan !== 'premium' && settings.plan !== 'ultra') ? <Crown size={20} className="text-yellow-500 animate-pulse" /> : <ArrowLeft className="rotate-180 text-[var(--theme-color)]" />}
+            </Card>
+
+            <Card 
+              onClick={() => settings.plan === 'ultra' ? setPage('saving') : setPage('upgrade')}
+              className={`flex items-center justify-between p-6 cursor-pointer hover:scale-[1.02] transition-all border-[var(--theme-color)]/20 relative overflow-hidden group ${settings.plan !== 'ultra' ? 'opacity-80' : ''}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5 group-hover:border-[var(--theme-color)]/50 transition-colors"><TrendingUp size={24} className="text-[var(--theme-color)]" /></div>
+                <div>
+                  <p className="font-black uppercase tracking-tighter">Monthly Saving</p>
+                  <p className="text-[10px] opacity-40 font-bold uppercase">Ultra Feature</p>
+                </div>
+              </div>
+              {settings.plan !== 'ultra' ? <Crown size={20} className="text-purple-500 animate-pulse" /> : <ArrowLeft className="rotate-180 text-[var(--theme-color)]" />}
             </Card>
 
             <Card 
@@ -1238,7 +1410,7 @@ export default function App() {
         </div>
 
         {/* Plan Info */}
-        <Card className="bg-black/40 border-[var(--theme-color)]/10 py-4">
+        <Card className="bg-main/40 border-[var(--theme-color)]/10 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[var(--theme-color)]/10 flex items-center justify-center"><Crown size={20} className="text-[var(--theme-color)]" /></div>
@@ -1280,6 +1452,7 @@ export default function App() {
         )}
         {page === 'settings' && <SettingsPage onBack={() => setPage('dashboard')} />}
         {page === 'upgrade' && <UpgradePage onBack={() => setPage('dashboard')} />}
+        {page === 'saving' && <MonthlySavingPage onBack={() => setPage('dashboard')} />}
         {page === 'game' && <GamePage onBack={() => setPage('dashboard')} onUpgrade={() => setPage('upgrade')} />}
         {page === 'calculator' && <Calculator onBack={() => setPage('dashboard')} />}
         {viewingBill && <BillView bill={viewingBill} onBack={() => setViewingBill(null)} />}

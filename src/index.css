@@ -13,6 +13,22 @@
   .light-mode body {
     @apply bg-[#f0f0f0] text-black;
   }
+
+  .bg-main {
+    @apply bg-[#050505];
+  }
+
+  .light-mode .bg-main {
+    @apply bg-[#f0f0f0];
+  }
+
+  .text-main {
+    @apply text-white;
+  }
+
+  .light-mode .text-main {
+    @apply text-black;
+  }
 }
 
 .glass {
@@ -20,7 +36,7 @@
 }
 
 .light-mode .glass {
-  @apply bg-black/5 border-black/10;
+  @apply bg-black/5 border-black/20;
 }
 
 .neon-glow {
