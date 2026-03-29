@@ -255,7 +255,7 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
       return;
     }
     playSound('pop');
-    setProducts([...products, { ...currentProduct, id: Math.random().toString(36).substr(2, 9) }]);
+    setProducts([...products, { ...currentProduct, id: `prod-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` }]);
     setCurrentProduct({ name: '', quantity: 1, price: 0, unit: 'piece' });
   };
 
@@ -288,7 +288,7 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
     playSound('pop');
 
     const bill: Bill = {
-      id: editingBill?.id || Math.random().toString(36).substr(2, 9),
+      id: editingBill?.id || `bill-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       shopName,
       customerName,
       products,
@@ -398,61 +398,86 @@ const CreateBillPage = ({ onBack, onSave, editingBill }: any) => {
 const BillView = ({ bill, onBack }: any) => {
   const { t, settings, playSound } = useApp();
   const billRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const download = async (format: 'pdf' | 'jpg' | 'png') => {
     playSound('success');
-    if (!billRef.current) return;
+    if (!billRef.current || isDownloading) return;
+    
+    setIsDownloading(true);
     
     // Create a temporary container to render the bill for capture
-    // This avoids issues with fixed positioning and scroll offsets
     const originalElement = billRef.current;
     const container = document.createElement('div');
-    container.style.position = 'absolute';
+    container.style.position = 'fixed';
     container.style.left = '-9999px';
     container.style.top = '0';
-    container.style.width = originalElement.offsetWidth + 'px';
+    container.style.width = '400px'; // Fixed width for consistent capture
+    container.style.background = '#ffffff';
     document.body.appendChild(container);
     
     const clone = originalElement.cloneNode(true) as HTMLElement;
+    clone.style.background = '#ffffff';
+    clone.style.color = '#000000';
+    clone.style.width = '400px';
+    clone.style.borderRadius = '0';
+    clone.style.boxShadow = 'none';
+    clone.style.transform = 'none';
+    
+    // Force standard colors to avoid oklab/oklch issues in html2canvas
+    const style = document.createElement('style');
+    style.innerHTML = `
+      * { color-scheme: light !important; }
+      .bg-white { background-color: #ffffff !important; }
+      .text-black { color: #000000 !important; }
+      .border-black { border-color: #000000 !important; }
+      .text-red-600 { color: #dc2626 !important; }
+      [class*="border-black/"] { border-color: rgba(0,0,0,0.1) !important; }
+      [class*="bg-black/"] { background-color: rgba(0,0,0,0.05) !important; }
+    `;
+    container.appendChild(style);
     container.appendChild(clone);
 
     try {
+      const captureScale = settings.plan === 'ultra' ? 3 : 2;
+      
       const canvas = await html2canvas(clone, { 
-        scale: settings.plan === 'ultra' ? 4 : 2, 
-        backgroundColor: settings.themeMode === 'dark' ? '#050505' : '#ffffff',
+        scale: captureScale, 
+        backgroundColor: '#ffffff',
         useCORS: true,
-        logging: false
+        logging: false,
+        allowTaint: true,
       });
       
       document.body.removeChild(container);
       
+      const fileName = `bill-${bill.id}-${new Date().getTime()}`;
+
       if (format === 'pdf') {
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/png', 1.0);
         const pdf = new jsPDF('p', 'mm', 'a4');
         const imgProps = pdf.getImageProperties(imgData);
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
         pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`bill-${bill.id}.pdf`);
+        pdf.save(`${fileName}.pdf`);
       } else {
-        const imgData = canvas.toDataURL(`image/${format === 'jpg' ? 'jpeg' : 'png'}`, 1.0);
-        const blob = await (await fetch(imgData)).blob();
-        const url = URL.createObjectURL(blob);
+        const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+        const imgData = canvas.toDataURL(mimeType, 1.0);
+        
         const link = document.createElement('a');
-        link.style.display = 'none';
-        link.href = url;
-        link.download = `bill-${bill.id}.${format}`;
+        link.href = imgData;
+        link.download = `${fileName}.${format}`;
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => {
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        }, 100);
+        document.body.removeChild(link);
       }
     } catch (error) {
       console.error('Download failed:', error);
       if (container.parentNode) document.body.removeChild(container);
-      alert('Download failed. Please try again or take a screenshot.');
+      alert('Download failed. Please take a screenshot or try the Share button.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -521,8 +546,8 @@ const BillView = ({ bill, onBack }: any) => {
                 </tr>
               </thead>
               <tbody>
-                {bill.products.map((p: any) => (
-                  <tr key={p.id} className="border-b border-black/5">
+                {bill.products.map((p: any, idx: number) => (
+                  <tr key={`${p.id}-${idx}`} className="border-b border-black/5">
                     <td className="py-3 font-bold text-sm">{p.name}</td>
                     <td className="py-3 text-center text-xs">{p.quantity} {p.unit}</td>
                     <td className="py-3 text-right text-xs">{p.price}</td>
@@ -573,10 +598,16 @@ const BillView = ({ bill, onBack }: any) => {
       </div>
 
       <div className="w-full max-w-lg grid grid-cols-1 gap-4">
-        <Button onClick={() => download('pdf')} variant="primary" className="py-4 rounded-2xl"><Download size={20} /> {t('downloadPDF')}</Button>
+        <Button onClick={() => download('pdf')} variant="primary" className="py-4 rounded-2xl" disabled={isDownloading}>
+          {isDownloading ? <span className="animate-pulse">Processing...</span> : <><Download size={20} /> {t('downloadPDF')}</>}
+        </Button>
         <div className="grid grid-cols-2 gap-4">
-          <Button onClick={() => download('jpg')} variant="secondary" className="py-4 rounded-2xl">{t('downloadJPG')}</Button>
-          <Button onClick={() => download('png')} variant="secondary" className="py-4 rounded-2xl">{t('downloadPNG')}</Button>
+          <Button onClick={() => download('jpg')} variant="secondary" className="py-4 rounded-2xl" disabled={isDownloading}>
+            {isDownloading ? '...' : t('downloadJPG')}
+          </Button>
+          <Button onClick={() => download('png')} variant="secondary" className="py-4 rounded-2xl" disabled={isDownloading}>
+            {isDownloading ? '...' : t('downloadPNG')}
+          </Button>
         </div>
       </div>
     </motion.div>
@@ -607,8 +638,8 @@ const HistoryPage = ({ onBack, onView, onEdit }: any) => {
         </div>
       ) : (
         <div className="space-y-4">
-          {bills.map(bill => (
-            <Card key={bill.id} className="flex justify-between items-center border-[var(--theme-color)]/10 hover:border-[var(--theme-color)]/40 transition-colors">
+          {bills.map((bill, idx) => (
+            <Card key={`${bill.id}-${idx}`} className="flex justify-between items-center border-[var(--theme-color)]/10 hover:border-[var(--theme-color)]/40 transition-colors">
               <div onClick={() => onView(bill)} className="cursor-pointer flex-1">
                 <p className="font-bold text-lg">{bill.shopName}</p>
                 <p className="text-sm opacity-60">{bill.customerName} • {bill.date}</p>
@@ -1021,6 +1052,7 @@ const MonthlySavingPage = ({ onBack }: any) => {
   const [food, setFood] = useState('');
   const [material, setMaterial] = useState('');
   const [result, setResult] = useState<number | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const calculate = () => {
     const totalIncome = parseFloat(income) || 0;
@@ -1039,27 +1071,39 @@ const MonthlySavingPage = ({ onBack }: any) => {
 
   const downloadSaving = async () => {
     const element = document.getElementById('saving-report');
-    if (!element) return;
+    if (!element || isDownloading) return;
     
+    setIsDownloading(true);
     playSound('success');
-    const canvas = await html2canvas(element, {
-      scale: settings.plan === 'ultra' ? 4 : 2,
-      backgroundColor: settings.themeMode === 'dark' ? '#050505' : '#ffffff',
-    });
-    
-    const imgData = canvas.toDataURL('image/png');
-    const blob = await (await fetch(imgData)).blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.style.display = 'none';
-    link.href = url;
-    link.download = `saving_report_${new Date().getTime()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
+    try {
+      const canvas = await html2canvas(element, {
+        scale: settings.plan === 'ultra' ? 3 : 2,
+        backgroundColor: settings.themeMode === 'dark' ? '#050505' : '#ffffff',
+        useCORS: true,
+        allowTaint: true,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('saving-report');
+          if (el) {
+            // Force standard colors to avoid oklab/oklch issues
+            el.style.backgroundColor = settings.themeMode === 'dark' ? '#050505' : '#ffffff';
+            el.style.color = settings.themeMode === 'dark' ? '#ffffff' : '#000000';
+          }
+        }
+      });
+      
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `saving_report_${new Date().getTime()}.png`;
+      document.body.appendChild(link);
+      link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 100);
+    } catch (error) {
+      console.error('Saving report download failed:', error);
+      alert('Download failed. Please take a screenshot.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -1109,8 +1153,8 @@ const MonthlySavingPage = ({ onBack }: any) => {
               </div>
               <p className="text-[10px] opacity-40 font-bold uppercase tracking-widest">Generated by Bill Crown 3 Ultra</p>
             </div>
-            <Button onClick={downloadSaving} variant="outline" className="w-full mt-4 flex gap-2 items-center justify-center">
-              <Download size={20} /> Download Report
+            <Button onClick={downloadSaving} variant="outline" className="w-full mt-4 flex gap-2 items-center justify-center" disabled={isDownloading}>
+              {isDownloading ? 'Processing...' : <><Download size={20} /> Download Report</>}
             </Button>
           </motion.div>
         )}
